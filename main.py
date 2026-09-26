@@ -86,9 +86,11 @@ class Ant:
         self.symbol = symbol
         self.food = False
         self.alive = True
+        self.stats = Analytics(self)
     
     def die(self):
         self.alive = False
+        self.stats.ant_die()
 
     def act(self, vision):
         return self.strategy.one_step(self.x, self.y, vision, self.food)
@@ -106,7 +108,7 @@ class Ant:
         return self.symbol
 
 # game analytics - to be completed
-'''
+
 class Analytics:
     def __init__(self, ant):
         self.ant = ant
@@ -121,12 +123,27 @@ class Analytics:
         self.actions["dist"] += 1
 
     def update_food (self, dest):
-        self.actions[dest] += 1
+        self.food[dest] += 1
 
     def update_conf (self, conf):
-        self.conflicts[conf] += 1        
-'''
-        
+        self.conflicts[conf] += 1
+
+    def print_stats (self):
+        print("Statistics for ant " + str(self.ant))
+        print("--- ANT HEALTH ---")
+        if self.actions["alive"] > 0:
+            print("  Died in round: " + str(self.actions["alive"]))
+        else:
+            print("  Lived entire game.")
+        print("  Distance traveled: " + str(self.actions["dist"]))
+        print("--- CONTRIBUTION ---")
+        print("  Food collected: " + str(self.food["picked"]))
+        print("  Food dropped: " + str(self.food["dropped"]))
+        print("  Food dropped at home: " + str(self.food["dropped_home"]))
+        print("--- CONFLICTS ---") ## TODO
+        for conflict, count in self.conflicts.items():
+            print("  " + conflict.capitalize() + ": " + str(count))
+
 # utility functions
 def is_open_cell(matrix, x, y, ant=''):
     """Check if a cell in matrix is in bounds and not a wall."""
@@ -507,6 +524,7 @@ def game_loop(matrix, ants, config):
                 new_loc = transform_xy[move[0]](loc[0], loc[1])
                 if is_open_cell(matrix, new_loc[0], new_loc[1], ant=a.symbol):
                     loc = new_loc
+                    a.stats.update_dist()
 
             elif move[0] == "GET":
                 if len(move) != 2 or move[1] not in transform_xy:
@@ -532,10 +550,15 @@ def game_loop(matrix, ants, config):
                         a.food = False
                         cell = matrix[target_x][target_y]
                         if cell.anthill:
+                            a.stats.update_food("dropped")
                             if cell.anthill == NORTH_HILL:
                                 team1_points += 1
+                                if a.symbol in NORTH_SYMS:
+                                    a.stats.update_food("dropped_home")
                             elif cell.anthill == SOUTH_HILL:
                                 team2_points += 1
+                                if a.symbol in SOUTH_SYMS:
+                                    a.stats.update_food("dropped_home")
                         else:
                             if (target_x, target_y) in proposed_drops:
                                 proposed_drops[(target_x, target_y)].append(a)
@@ -585,6 +608,7 @@ def game_loop(matrix, ants, config):
             if matrix[target_x][target_y].food > 0 and matrix[target_x][target_y].food >= len(aList): #here
                 for a in aList:
                     a.food = True
+                    a.stats.update_food("picked")
                 matrix[target_x][target_y].food -= len(aList)
             else: ## insufficient food
                 print("Invalid GET in " + a.symbol + ": " + str(move))
@@ -592,6 +616,9 @@ def game_loop(matrix, ants, config):
         # Resolve proposed drops
         for (target_x, target_y), aList in proposed_drops.items():
             if (matrix[target_x][target_y].food < 9 - len(aList)):
+                for a in aList:
+                    a.food = False
+                    a.stats.update_food("dropped")
                 matrix[target_x][target_y].food += len(aList)
             else: ## too much food on a tile
                 for a in aList:
@@ -679,6 +706,13 @@ def game_loop(matrix, ants, config):
         filename = input("Enter filename: ")
         with open(filename, "w+") as outfile:
             outfile.write(game_output)
+
+    # prompt user to show game stats for each ant
+    show_stats = input("Show game stats for each ant? (yes/<enter>) ")
+    if show_stats.upper() == "YES":
+        for ant in ants:
+            print(f"\nAnt {ant.symbol} (Team {ant.team})")
+            ant.stats.print_stats()
 
 def prompt_save_map(initial_matrix):
     """Prompt user to save map for a future game"""
